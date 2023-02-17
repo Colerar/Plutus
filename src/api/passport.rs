@@ -1,5 +1,3 @@
-use anyhow::Context;
-
 use super::{get_json_resp_fn, Passport};
 
 use crate::data::passport::*;

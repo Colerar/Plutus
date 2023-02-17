@@ -20,7 +20,7 @@ pub struct QrGetData {
 
 impl QrGetData {
   #[allow(dead_code)]
-  pub fn as_req<'a>(&'a self) -> QrLoginReq<'a> {
+  pub fn as_req(&self) -> QrLoginReq {
     QrLoginReq {
       oauth_key: self.oauth_key.as_str(),
     }

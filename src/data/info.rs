@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_with::{serde_as, BoolFromInt, NoneAsEmptyString, DefaultOnError};
+use serde_with::{serde_as, BoolFromInt, DefaultOnError, NoneAsEmptyString};
 
 use super::{macros::*, share::*, *};
 
@@ -63,7 +63,7 @@ pub struct LevelInfo {
 
 #[derive(Debug)]
 pub enum OfficialRole {
-  Not,         // 0
+  Not,          // 0
   Personal,     // 1, 2, 7
   Organization, // 3..=6
   Unknown(i32), // other

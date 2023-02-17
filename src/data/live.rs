@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::Deserialize_repr;
 use serde_with::{serde_as, BoolFromInt, DefaultOnNull};
 
-use super::{macros::*, share::*, *};
+use super::{macros::*, *};
 
 #[derive(Serialize, Debug)]
 pub struct UidToRoomIdReq {
@@ -95,8 +95,8 @@ impl FromCode for SpecialType {
 #[derive(Debug, Deserialize_repr)]
 #[repr(u8)]
 pub enum LiveStatus {
-  Stop = 0, // 暂停
-  Live = 1, // 直播
+  Stop = 0,      // 暂停
+  Live = 1,      // 直播
   Carousels = 2, // 轮播
 }
 

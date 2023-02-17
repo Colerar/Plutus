@@ -39,6 +39,6 @@ mod tests {
   fn init_twice() {
     DATA_DIR.set(PathBuf::new()).unwrap();
     let err = init().unwrap_err();
-    println!("{:#?}", err);
+    println!("{err:#?}");
   }
 }

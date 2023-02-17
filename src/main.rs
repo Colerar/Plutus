@@ -19,12 +19,10 @@ fn init_logger() -> anyhow::Result<()> {
   let var = env::var("PLUTUS_LOG");
   let log_expr = if let Ok(ref ok) = var {
     ok.as_str()
+  } else if cfg!(debug_assertions) {
+    "debug"
   } else {
-    if cfg!(debug_assertions) {
-      "debug"
-    } else {
-      "info"
-    }
+    "info"
   };
   let mut builder = formatted_builder();
   builder.parse_filters(log_expr);
@@ -33,6 +31,7 @@ fn init_logger() -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 fn new_test_client() -> client::Client {
   use client::Client;
   init_logger().unwrap();
