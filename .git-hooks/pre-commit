@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+CHANGED_FILES="$(git --no-pager diff --name-status --no-color --cached | awk '$1 != "D" && $NF ~ /\.rs$/ { print $NF }')"
+
+if [ -z "$CHANGED_FILES" ]; then
+  echo "No Rust staged files."
+  exit 0
+fi
+
+echo "Running rustfmt checker over these files:"
+echo "$CHANGED_FILES"
+
+if ! command -v "cargo" &>/dev/null; then
+  echo "cargo could not be found"
+  echo "please install Rust first:"
+  echo "https://www.rust-lang.org/tools/install"
+  exit
+fi
+
+if ! command -v "rustfmt" &>/dev/null; then
+  echo "rustfmt is not installed, you can install it via:"
+  echo "rustup component add rustfmt"
+  exit 1
+fi
+
+if ! rustfmt $CHANGED_FILES; then
+  echo "Failed to execute \"cargo fmt\""
+  exit 1
+fi
+
+echo "Running cargo clippy..."
+
+if ! command -v "cargo-clippy" &>/dev/null; then
+  echo "cargo-clippy is not installed, you can install it via:"
+  echo "rustup component add clippy"
+  exit 1
+fi
+
+if ! cargo clippy --all -- -D warnings; then
+  echo "Clippy check failed"
+  exit 1
+fi
