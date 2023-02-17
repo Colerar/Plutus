@@ -31,3 +31,13 @@ fn init_logger() -> anyhow::Result<()> {
   builder.try_init().context("Failed to init logger")?;
   Ok(())
 }
+
+#[cfg(test)]
+fn new_test_client() -> client::Client {
+  use client::Client;
+  init_logger().unwrap();
+  if path::DATA_DIR.get().is_none() {
+    path::init().unwrap();
+  }
+  Client::new().unwrap()
+}
