@@ -9,6 +9,7 @@ use reqwest_cookie_store::{CookieStore, CookieStoreRwLock};
 
 use crate::path::DATA_DIR;
 
+#[derive(Clone)]
 pub struct Client {
   #[allow(dead_code)] // used it in macro, cannot detect
   pub(crate) client: reqwest::Client,
@@ -58,7 +59,7 @@ impl Client {
       .get()
       .context("Failed to get DATA_DIR")?
       .join("cookies.jsonl");
-    log::debug!("Cookie path: `{}`", cookie_path.to_string_lossy());
+    log::trace!("Cookie path: `{}`", cookie_path.to_string_lossy());
     if let Some(parent) = cookie_path.parent() {
       if !parent.exists() {
         fs::create_dir_all(parent)

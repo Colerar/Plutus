@@ -55,11 +55,11 @@ pub(super) use url_path;
 
 macro_rules! get_json_resp_fn {
   (
-    $( $fn_name:ident() [url: $api_url:expr] -> $resp_data:ty );+
+    $( $vis:vis $fn_name:ident() [url: $api_url:expr] -> $resp_data:ty );+
     $( ; )?
   ) => {
     $(
-      async fn $fn_name(&self) -> anyhow::Result<$resp_data> {
+      $vis async fn $fn_name(&self) -> anyhow::Result<$resp_data> {
         use anyhow::Context;
         self
           .0
@@ -79,11 +79,11 @@ pub(crate) use get_json_resp_fn;
 
 macro_rules! post_form_json_resp_fn {
   (
-    $( $fn_name:ident( $form_name:ident : $form_ty:ty ) [url: $api_url:expr] -> $resp_data:ty );+
+    $( $vis:vis $fn_name:ident( $form_name:ident : $form_ty:ty ) [url: $api_url:expr] -> $resp_data:ty );+
     $( ; )?
   ) => {
     $(
-      async fn $fn_name(&self, $form_name: $form_ty) -> anyhow::Result<$resp_data> {
+      $vis async fn $fn_name(&self, $form_name: $form_ty) -> anyhow::Result<$resp_data> {
         use anyhow::Context;
         self
           .0
@@ -104,11 +104,11 @@ pub(crate) use post_form_json_resp_fn;
 
 macro_rules! get_query_json_resp_fn {
   (
-    $( $fn_name:ident( $form_name:ident : $form_ty:ty ) [url: $api_url:expr] -> $resp_data:ty );+
+    $( $vis:vis $fn_name:ident( $form_name:ident : $form_ty:ty ) [url: $api_url:expr] -> $resp_data:ty );+
     $( ; )?
   ) => {
     $(
-      async fn $fn_name(&self, $form_name: $form_ty) -> anyhow::Result<$resp_data> {
+      $vis async fn $fn_name(&self, $form_name: $form_ty) -> anyhow::Result<$resp_data> {
         use anyhow::Context;
         self
           .0
