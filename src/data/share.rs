@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::de;
 
 use super::{macros::*, FromCode};
@@ -60,10 +62,6 @@ impl<T: ColorFromU32 + Sized> ColorFromU64 for T {
   }
 }
 
-pub trait ColorFromHex: Sized {
-  fn from_str(num: &str) -> Option<Self>;
-}
-
 #[derive(Debug)]
 pub struct RgbColor {
   pub red: u8,
@@ -81,19 +79,30 @@ impl ColorFromU32 for RgbColor {
   }
 }
 
-impl ColorFromHex for RgbColor {
-  fn from_str(num: &str) -> Option<RgbColor> {
+#[derive(thiserror::Error, Debug)]
+pub enum ColorDeError {
+  #[error("str is empty")]
+  Empty,
+  #[error("Invalid hex len, expected: {0}, actual: {1}")]
+  InvalidStringLength(usize, usize),
+}
+
+impl FromStr for RgbColor {
+  type Err = ColorDeError;
+  fn from_str(num: &str) -> Result<RgbColor, Self::Err> {
+    const BYTES_LEN: usize = 3;
     if num.is_empty() {
-      return None;
+      return Err(ColorDeError::Empty);
     }
     let num = if let Some(num) = num.strip_prefix('#') {
       num
     } else {
       num
     };
-    let mut bytes = [0u8; 3];
-    hex::decode_to_slice(num, &mut bytes).ok()?;
-    Some(RgbColor {
+    let mut bytes = [0u8; BYTES_LEN];
+    hex::decode_to_slice(num, &mut bytes)
+      .map_err(|_| ColorDeError::InvalidStringLength(BYTES_LEN * 2, num.len()))?;
+    Ok(RgbColor {
       red: bytes[0],
       green: bytes[1],
       blue: bytes[2],
@@ -120,19 +129,22 @@ impl ColorFromU32 for RgbaColor {
   }
 }
 
-impl ColorFromHex for RgbaColor {
-  fn from_str(num: &str) -> Option<RgbaColor> {
+impl FromStr for RgbaColor {
+  type Err = ColorDeError;
+  fn from_str(num: &str) -> Result<RgbaColor, Self::Err> {
+    const BYTES_LEN: usize = 4;
     if num.is_empty() {
-      return None;
+      return Err(ColorDeError::Empty);
     }
     let num = if let Some(num) = num.strip_prefix('#') {
       num
     } else {
       num
     };
-    let mut bytes = [0u8; 4];
-    hex::decode_to_slice(num, &mut bytes).ok()?;
-    Some(RgbaColor {
+    let mut bytes = [0u8; BYTES_LEN];
+    hex::decode_to_slice(num, &mut bytes)
+      .map_err(|_| ColorDeError::InvalidStringLength(BYTES_LEN * 2, num.len()))?;
+    Ok(RgbaColor {
       red: bytes[0],
       green: bytes[1],
       blue: bytes[2],
@@ -164,8 +176,8 @@ macro_rules! de_color_impl {
             E: de::Error,
           {
             match <$T>::from_str(v) {
-              Some(color) => Ok(color),
-              None => {
+              Ok(color) => Ok(color),
+              Err(_) => {
                 let unexp = serde::de::Unexpected::Str(v);
                 Err(serde::de::Error::invalid_value(unexp, &self))
               }
@@ -186,8 +198,64 @@ macro_rules! de_color_impl {
   };
 }
 
+macro_rules! de_option_color_impl {
+  ($fn_name:ident, $T:ty) => {
+    #[allow(dead_code)]
+    pub fn $fn_name<'a, D>(deserializer: D) -> Result<Option<$T>, D::Error>
+    where
+      D: serde::Deserializer<'a>,
+    {
+      struct De;
+      impl<'de> de::Visitor<'de> for De {
+        type Value = Option<$T>;
+
+        fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+        where
+          E: de::Error,
+        {
+          Ok(Some(<$T>::from_u32(v)))
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+          E: de::Error,
+        {
+          if v.is_empty() {
+            return Ok(None);
+          };
+          match <$T>::from_str(v) {
+            Ok(color) => Ok(Some(color)),
+            Err(_) => {
+              let unexp = serde::de::Unexpected::Str(v);
+              Err(serde::de::Error::invalid_value(unexp, &self))
+            }
+          }
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+          E: de::Error,
+        {
+          Ok(None)
+        }
+
+        forward_ints::de_as!(u32: u8, u16, i8, i16);
+        forward_ints::try_from_signed!(u32: i32, i64);
+        forward_ints::try_from_unsigned!(u32: u64);
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+          formatter.write_str(concat!(stringify!($T), ", str(hex) or u32 or null"))
+        }
+      }
+      deserializer.deserialize_any(De)
+    }
+  };
+}
+
 de_color_impl!(RgbColor);
 de_color_impl!(RgbaColor);
+de_option_color_impl!(de_option_rgb, RgbColor);
+de_option_color_impl!(de_option_rgba, RgbaColor);
 
 #[cfg(test)]
 mod tests {

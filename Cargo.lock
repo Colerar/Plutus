@@ -1109,6 +1109,7 @@ name = "plutus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "brotli",
  "byteorder",
  "cookie_store 0.19.0",
  "directories",

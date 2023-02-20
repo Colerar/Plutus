@@ -7,6 +7,7 @@ mod api;
 mod client;
 mod data;
 mod path;
+mod serde_as;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

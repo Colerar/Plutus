@@ -13,12 +13,12 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use serde_repr::Deserialize_repr;
-use serde_with::{serde_as, BoolFromInt, DefaultOnNull};
+use serde_repr::{Deserialize_repr, Serialize_repr};
+use serde_with::{serde_as, BoolFromInt, DefaultOnNull, NoneAsEmptyString};
 use tokio_tungstenite as tokio_ws2;
 use tokio_ws2::tungstenite as ws2;
 
-use super::{macros::*, *};
+use super::{macros::*, share::*, *};
 
 #[derive(Serialize, Debug)]
 pub struct UidToRoomIdReq {
@@ -302,6 +302,23 @@ pub enum MessagePayload {
 
 #[allow(dead_code)]
 impl MessagePayload {
+  fn decompress_to_cmds<R: Read>(rdr: &mut R) -> anyhow::Result<Vec<MaybeCommand>> {
+    let mut cmds = Vec::with_capacity(16);
+    let mut head_buf = [0u8; MessageHead::SIZE];
+    while rdr.read(&mut head_buf).context("Failed to read head")? == 16 {
+      let mut head_cursor = Cursor::new(head_buf);
+      let head =
+        MessageHead::from_reader(&mut head_cursor).context("Failed to read MessageHead")?;
+      let mut buf: Vec<u8> = vec![0; (head.size - head.head_size as u32) as usize];
+      rdr.read_exact(&mut buf).context("Failed to read body")?;
+      let cmd: MaybeCommand =
+        serde_json::from_slice(&buf).context("Failed to read Json with Zlib")?;
+      cmds.push(cmd);
+    }
+    cmds.shrink_to_fit();
+    Ok(cmds)
+  }
+
   pub fn from_reader<R: Read>(reader: &mut R) -> anyhow::Result<MessagePayload> {
     let head = MessageHead::from_reader(reader).context("Failed to read MessageHead")?;
     use PacketProtocol::{CommandBrotli, CommandZlib, Special};
@@ -311,29 +328,13 @@ impl MessagePayload {
           vec![serde_json::from_reader(reader).context("Failed to deserialize Command")?]
         }
         CommandZlib => {
-          let mut cmds = Vec::with_capacity(16);
-          let mut head_buf = [0u8; MessageHead::SIZE];
-          let mut zlib_rdr = flate2::read::ZlibDecoder::new(reader);
-
-          while zlib_rdr
-            .read(&mut head_buf)
-            .context("Failed to read head")?
-            == 16
-          {
-            let mut head_cursor = Cursor::new(head_buf);
-            let head =
-              MessageHead::from_reader(&mut head_cursor).context("Failed to read MessageHead")?;
-            let mut buf: Vec<u8> = vec![0; (head.size - head.head_size as u32) as usize];
-            zlib_rdr
-              .read_exact(&mut buf)
-              .context("Failed to read body")?;
-            let cmd: MaybeCommand =
-              serde_json::from_slice(&buf).context("Failed to read Json with Zlib")?;
-            cmds.push(cmd);
-          }
-          cmds
+          let mut rdr = flate2::read::ZlibDecoder::new(reader);
+          Self::decompress_to_cmds(&mut rdr)?
         }
-        CommandBrotli => todo!("CommandBrotli is not implemented"),
+        CommandBrotli => {
+          let mut rdr = brotli::Decompressor::new(reader, 4096);
+          Self::decompress_to_cmds(&mut rdr)?
+        }
         _ => bail!("Unexpected protocol: {:?}", head.protocol),
       }),
       PacketType::HeartbeatResp if head.protocol == Special => MessagePayload::HeartbeatResp {
@@ -358,6 +359,16 @@ pub struct Certificate {
   #[serde(rename = "roomid")]
   pub room_id: u64,
   pub key: String,
+  #[serde(rename = "protover")]
+  pub protocol: Protocol,
+}
+
+#[derive(Serialize_repr)]
+#[repr(u8)]
+#[allow(dead_code)]
+pub enum Protocol {
+  Zlib = 2,
+  Brotli = 3,
 }
 
 impl std::fmt::Debug for Certificate {
@@ -380,8 +391,13 @@ impl std::fmt::Debug for Certificate {
 #[allow(dead_code)]
 impl Certificate {
   #[inline]
-  pub fn new(mid: u64, room_id: u64, key: String) -> Certificate {
-    Certificate { mid, room_id, key }
+  pub fn new(mid: u64, room_id: u64, key: String, protocol: Protocol) -> Certificate {
+    Certificate {
+      mid,
+      room_id,
+      key,
+      protocol,
+    }
   }
 
   #[inline]
@@ -433,4 +449,70 @@ pub enum PacketType {
   Command = 5,
   Certificate = 7,
   CertificateResp = 8,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct MedalInfo {
+  #[serde(rename = "anchor_roomid")]
+  pub room_id: u64,
+  #[serde(rename = "target_id")]
+  pub liver_id: u64,
+  #[serde(rename = "anchor_uname")]
+  pub liver_name: String,
+  pub guard_level: GuardLevel,
+  pub icon_id: u64,
+  #[serde_as(as = "BoolFromInt")]
+  pub is_lighted: bool,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub medal_color: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub medal_color_border: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub medal_color_start: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub medal_color_end: Option<RgbColor>,
+  pub medal_level: u32,
+  pub medal_name: String,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub special: Option<String>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct UserInfo {
+  #[serde(rename = "face")]
+  pub avatar: String,
+  #[serde_as(as = "NoneAsEmptyString")]
+  #[serde(rename = "face_frame")]
+  pub avatar_frame: Option<String>,
+  pub guard_level: GuardLevel,
+  #[serde(rename = "uname")]
+  pub username: String,
+  #[serde_as(as = "BoolFromInt")]
+  pub is_main_vip: bool, // 主站大会员
+  #[serde_as(as = "BoolFromInt")]
+  #[serde(rename = "is_svip")]
+  pub is_year_vip: bool, // 年费老爷
+  #[serde_as(as = "BoolFromInt")]
+  #[serde(rename = "is_vip")]
+  pub is_month_vip: bool, // 月费老爷
+  #[serde_as(as = "BoolFromInt")]
+  #[serde(rename = "manager")]
+  pub is_admin: bool, // 房管
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub level_color: Option<RgbColor>,
+  #[serde(rename = "uname_color")]
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub name_color: Option<RgbColor>,
+  pub user_level: u32,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct Gift {
+  #[serde(rename = "gift_id")]
+  pub id: u64,
+  pub gift_name: String,
+  pub num: u32,
 }

@@ -40,6 +40,7 @@ pub struct MessageConnection {
   close: bool,
 }
 
+#[allow(dead_code)]
 impl MessageConnection {
   pub async fn connect_with_client(
     client: &Client,
@@ -91,7 +92,7 @@ impl MessageConnection {
       .to_url()
       .with_context(|| format!("Failed to convert WssHost to Url: {:?}", host_data))?;
 
-    Self::connect(url, mid, real_room_id, key).await
+    Self::connect(url, mid, real_room_id, key, Protocol::Brotli).await
   }
 
   pub async fn connect(
@@ -99,6 +100,7 @@ impl MessageConnection {
     mid: u64,
     room_id: u64,
     key: String,
+    protocol: Protocol,
   ) -> anyhow::Result<Arc<RwLock<Self>>> {
     let config = NetworkConfig::default();
 
@@ -119,7 +121,7 @@ impl MessageConnection {
     let (mut wss_tx, mut wss_rx) = ws.split();
 
     {
-      let msg = Certificate::new(mid, room_id, key).with_head(1);
+      let msg = Certificate::new(mid, room_id, key, protocol).with_head(1);
       log::debug!("Send Certificate Packet: {:?}", msg);
       let binary = msg.into_binary_frame().unwrap();
       wss_tx.send(binary).await.unwrap();

@@ -1,5 +1,9 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, time::Duration};
 
+use crate::{
+  data::{live::*, macros::*, share::*},
+  serde_as::*,
+};
 use anyhow::{bail, Context};
 use either::Either;
 use num_derive::FromPrimitive;
@@ -7,10 +11,11 @@ use num_traits::FromPrimitive;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_repr::Deserialize_repr;
-use serde_with::{serde_as, BoolFromInt, NoneAsEmptyString};
+use serde_with::{
+  serde_as, BoolFromInt, DefaultOnNull, DisplayFromStr, DurationSeconds, NoneAsEmptyString,
+};
+use time::serde::timestamp::option::deserialize as date_as_unix_ts;
 use time::OffsetDateTime;
-
-use crate::data::{macros::*, share::*};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -47,6 +52,10 @@ impl fmt::Debug for MaybeCommand {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "cmd", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Command {
+  CutOff {
+    #[serde(flatten)]
+    data: Box<CutOff>,
+  },
   #[serde(rename = "DANMU_MSG")]
   Danmaku {
     #[serde(flatten)]
@@ -55,15 +64,51 @@ pub enum Command {
   GuardBuy {
     data: Box<GuardBuy>,
   },
+  #[serde(rename = "LIVE")]
+  Living {
+    #[serde(flatten)]
+    data: Box<Living>,
+  },
   OnlineRankCount {
     data: OnlineRankCount,
+  },
+  #[serde(rename = "ROOM_BLOCK_MSG")]
+  RoomBlock {
+    data: Box<RoomBlock>,
+  },
+  RoomChange {
+    data: Box<RoomChange>,
+  },
+  RoomShield {
+    #[serde(flatten)]
+    data: Box<RoomShield>,
   },
   StopLiveRoomList {
     data: Box<StopLiveRoomList>,
   },
+  #[serde(rename = "SUPER_CHAT_MESSAGE_DELETE")]
+  SuperChatDelete {
+    data: Box<SuperChatDelete>,
+  },
+  SuperChatEntrance {
+    data: Box<SuperChatEntrance>,
+  },
+  SuperChatMessage {
+    data: Box<SuperChatMessage>,
+  },
+  Warning {
+    #[serde(flatten)]
+    data: Box<Warning>,
+  },
   WatchedChange {
     data: Box<WatchedChange>,
   },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CutOff {
+  #[serde(rename = "msg")]
+  pub message: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -192,10 +237,12 @@ impl DanmakuMeta {
   }
 }
 
+#[serde_as]
 #[derive(Deserialize, Debug)]
 pub struct MetaExtra {
   #[serde(rename = "emots")]
-  pub emoticons: Option<HashMap<String, InlineEmoticon>>,
+  #[serde_as(as = "DefaultOnNull")]
+  pub emoticons: HashMap<String, InlineEmoticon>,
 }
 
 /// Emoticon inline in message text
@@ -259,7 +306,7 @@ impl DanmakuUser {
       let username = data[1];
       let name_color = data[7];
     );
-    let name_color = RgbColor::from_str(name_color);
+    let name_color = RgbColor::from_str(name_color).ok();
     get_as_u64_as_bool!(
       let is_admin = data[2];
       let is_year_vip = data[3];
@@ -384,9 +431,48 @@ pub enum GuardLevel {
   Captain = 3,  // 舰长
 }
 
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct Living {
+  #[serde(rename = "roomid")]
+  pub room_id: u64,
+  pub live_key: String,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub voice_background: Option<String>,
+  pub sub_session_key: String,
+  pub live_platform: String,
+  pub live_model: u32,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct OnlineRankCount {
   pub count: u32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RoomBlock {
+  #[serde(rename = "dmscore")]
+  pub score: u32,
+  pub opeartor: u32,
+  pub uid: u64,
+  pub uname: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RoomChange {
+  pub title: String,
+  pub area_id: u32,
+  pub parent_area_id: u32,
+  pub area_name: String,
+  pub parent_area_name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RoomShield {
+  #[serde(rename = "type")]
+  pub ty: u32,
+  pub user: Vec<String>, // ["483056245_bili_483056245"], maybe uid_username
+  pub keyword: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -395,9 +481,144 @@ pub struct StopLiveRoomList {
   pub list: Vec<u64>,
 }
 
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatDelete {
+  #[serde_as(as = "DefaultOnNull")]
+  pub ids: Vec<u64>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatEntrance {
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub icon: Option<String>,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub jump_url: Option<String>,
+  pub status: i32,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatMessage {
+  pub id: u64,
+  pub uid: u64,
+
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub message: Option<String>,
+  #[serde(rename = "message_trans")]
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub translate: Option<String>,
+
+  #[serde(rename = "message_font_color")]
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub text_color: Option<RgbColor>,
+
+  #[serde(rename = "user_info")]
+  pub user: UserInfo,
+  #[serde(flatten)]
+  pub ui: SuperChatUi,
+  #[serde(flatten)]
+  pub time: SuperChatTime,
+
+  #[serde_as(as = "BoolFromInt")]
+  pub is_ranked: bool,
+  #[serde_as(as = "BoolFromIntString")]
+  pub is_send_audit: bool,
+
+  pub gift: Gift,
+  pub price: u32,
+
+  #[serde(rename = "dmscore")]
+  pub score: u32,
+  pub rate: u32,
+  pub token: String,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatMessageJpn {
+  #[serde_as(as = "DisplayFromStr")]
+  pub id: u64,
+  #[serde_as(as = "DisplayFromStr")]
+  pub uid: u64,
+
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub message: Option<String>,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub message_jpn: Option<String>,
+
+  #[serde(rename = "user_info")]
+  pub user: UserInfo,
+  #[serde(flatten)]
+  pub ui: SuperChatUi,
+  #[serde(flatten)]
+  pub time: SuperChatTime,
+
+  #[serde_as(as = "BoolFromInt")]
+  pub is_ranked: bool,
+
+  pub gift: Gift,
+  pub price: u32,
+
+  pub token: String,
+  pub rate: u32,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatUi {
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub background_bottom_color: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub background_color: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub background_price_color: Option<RgbColor>,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub background_icon: Option<String>,
+  #[serde_as(as = "NoneAsEmptyString")]
+  pub background_image: Option<String>,
+
+  // when not in SuperChatMessageJpn
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub background_color_end: Option<RgbColor>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub background_color_start: Option<RgbColor>,
+  pub color_point: Option<f64>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug)]
+pub struct SuperChatTime {
+  #[serde(deserialize_with = "date_as_unix_ts")]
+  pub start_time: Option<OffsetDateTime>,
+  #[serde(rename = "ts")]
+  #[serde(deserialize_with = "date_as_unix_ts")]
+  pub timestamp: Option<OffsetDateTime>,
+  #[serde(deserialize_with = "date_as_unix_ts")]
+  pub end_time: Option<OffsetDateTime>,
+  #[serde(rename = "time")]
+  #[serde_as(as = "DurationSeconds<u64>")]
+  pub duration: Duration,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct WatchedChange {
   pub num: u32,
   pub text_large: String,
   pub text_small: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Warning {
+  #[serde(rename = "msg")]
+  pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+  use indoc::indoc;
+  use serde_json::json;
+
+  use super::*;
 }
