@@ -42,11 +42,11 @@ pub struct MessageConnection {
 
 impl MessageConnection {
   pub async fn connect_with_client(
-    client: Client,
+    client: &Client,
     room_id: u64,
   ) -> anyhow::Result<Arc<RwLock<Self>>> {
     let mid = {
-      let client = Client::clone(&client);
+      let client = Client::clone(client);
       async move {
         client
           .info()
@@ -58,7 +58,7 @@ impl MessageConnection {
       }
     };
     let real_room_id = {
-      let client = Client::clone(&client);
+      let client = Client::clone(client);
       async move {
         client
           .live()
@@ -128,7 +128,7 @@ impl MessageConnection {
     let heartbeat_job = tokio::spawn({
       let con = Arc::clone(&con);
       async move {
-        let mut close = true;
+        let mut close = false;
         while !close {
           close = con.read().await.close;
           let msg = Message::heartbeat(1);

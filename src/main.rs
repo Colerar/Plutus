@@ -1,8 +1,6 @@
 use std::env;
 
 use anyhow::Context;
-use api::live::MessageConnection;
-use client::Client;
 use pretty_env_logger::formatted_builder;
 
 mod api;
@@ -12,14 +10,12 @@ mod path;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+  async_main().await
+}
+
+async fn async_main() -> anyhow::Result<()> {
   init_logger()?;
   path::init()?;
-  let client = Client::new().context("Failed to init bilibili client")?;
-
-  let con = MessageConnection::connect_with_client(client, 7777).await?;
-  while let Some(cmd) = con.write().await.receiver().recv().await {
-    println!("{:?}", cmd);
-  }
 
   Ok(())
 }

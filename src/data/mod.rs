@@ -4,6 +4,6 @@ pub(super) mod macros;
 pub mod passport;
 pub mod share;
 
-trait FromCode {
+pub trait FromCode {
   fn from_code(code: i32) -> Self;
 }

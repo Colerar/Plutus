@@ -242,6 +242,7 @@ pub struct Message {
   pub payload: MessagePayload,
 }
 
+#[allow(dead_code)]
 impl Message {
   pub fn into_binary_frame(mut self) -> anyhow::Result<ws2::Message> {
     let mut buf: Vec<u8> = Vec::with_capacity(128);
@@ -299,6 +300,7 @@ pub enum MessagePayload {
   Command(Vec<MaybeCommand>),
 }
 
+#[allow(dead_code)]
 impl MessagePayload {
   pub fn from_reader<R: Read>(reader: &mut R) -> anyhow::Result<MessagePayload> {
     let head = MessageHead::from_reader(reader).context("Failed to read MessageHead")?;
