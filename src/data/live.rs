@@ -365,7 +365,6 @@ pub struct Certificate {
 
 #[derive(Serialize_repr)]
 #[repr(u8)]
-#[allow(dead_code)]
 pub enum Protocol {
   Zlib = 2,
   Brotli = 3,
@@ -452,14 +451,14 @@ pub enum PacketType {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct MedalInfo {
   #[serde(rename = "anchor_roomid")]
   pub room_id: u64,
   #[serde(rename = "target_id")]
   pub liver_id: u64,
   #[serde(rename = "anchor_uname")]
-  pub liver_name: String,
+  pub liver_name: Option<String>,
   pub guard_level: GuardLevel,
   pub icon_id: u64,
   #[serde_as(as = "BoolFromInt")]
@@ -479,7 +478,7 @@ pub struct MedalInfo {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct UserInfo {
   #[serde(rename = "face")]
   pub avatar: String,
@@ -509,7 +508,7 @@ pub struct UserInfo {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Gift {
   #[serde(rename = "gift_id")]
   pub id: u64,

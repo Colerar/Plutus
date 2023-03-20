@@ -4,7 +4,7 @@ use serde::de;
 
 use super::{macros::*, FromCode};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum VipType {
   Unknown(i32),
   None,
@@ -26,7 +26,7 @@ impl FromCode for VipType {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum VipStatus {
   Unknown(i32),
   Normal,
@@ -62,7 +62,7 @@ impl<T: ColorFromU32 + Sized> ColorFromU64 for T {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RgbColor {
   pub red: u8,
   pub green: u8,
@@ -110,7 +110,7 @@ impl FromStr for RgbColor {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RgbaColor {
   pub red: u8,
   pub green: u8,

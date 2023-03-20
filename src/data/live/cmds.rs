@@ -9,7 +9,10 @@ use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
+use serde::{
+  de::{self, Error as DeError, Unexpected},
+  Deserialize, Serialize,
+};
 use serde_repr::Deserialize_repr;
 use serde_with::{
   serde_as, BoolFromInt, DefaultOnNull, DisplayFromStr, DurationSeconds, NoneAsEmptyString,
@@ -49,7 +52,7 @@ impl fmt::Debug for MaybeCommand {
   }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "cmd", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Command {
   CutOff {
@@ -64,6 +67,9 @@ pub enum Command {
   GuardBuy {
     data: Box<GuardBuy>,
   },
+  InteractWord {
+    data: Box<InteractWord>,
+  },
   #[serde(rename = "LIVE")]
   Living {
     #[serde(flatten)]
@@ -72,12 +78,38 @@ pub enum Command {
   OnlineRankCount {
     data: OnlineRankCount,
   },
+  /// 下播
+  Preparing {
+    #[serde(flatten)]
+    data: Preparing,
+  },
+  #[serde(rename = "room_admin_entrance")]
+  RoomAdminEntrance {
+    #[serde(flatten)]
+    data: Box<RoomAdminEntrance>,
+  },
+  RoomAdminRevoke {
+    #[serde(flatten)]
+    data: Box<RoomAdminRevoke>,
+  },
+  RoomAdmins {
+    #[serde(flatten)]
+    data: Box<RoomAdmins>,
+  },
   #[serde(rename = "ROOM_BLOCK_MSG")]
   RoomBlock {
     data: Box<RoomBlock>,
   },
   RoomChange {
     data: Box<RoomChange>,
+  },
+  #[serde(rename = "ROOM_REAL_TIME_MESSAGE_UPDATE")]
+  RoomRealTimeUpdate {
+    data: Box<RoomRealTimeUpdate>,
+  },
+  RoomSilentOff,
+  RoomSilentOn {
+    data: Box<RoomSilentOn>,
   },
   RoomShield {
     #[serde(flatten)]
@@ -96,6 +128,10 @@ pub enum Command {
   SuperChatMessage {
     data: Box<SuperChatMessage>,
   },
+  #[serde(rename = "USER_TOAST_MSG")]
+  UserToast {
+    data: Box<UserToast>,
+  },
   Warning {
     #[serde(flatten)]
     data: Box<Warning>,
@@ -105,13 +141,13 @@ pub enum Command {
   },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CutOff {
   #[serde(rename = "msg")]
   pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Danmaku {
   #[serde(rename = "dm_v2")]
   pub v2: String,
@@ -119,6 +155,15 @@ pub struct Danmaku {
   pub raw_info: Box<serde_json::Value>,
   #[serde(skip)]
   data: OnceCell<DanmakuData>,
+}
+
+impl fmt::Debug for Danmaku {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("Danmaku")
+      .field("v2", &self.v2)
+      .field("data", &self.data())
+      .finish()
+  }
 }
 
 impl Danmaku {
@@ -130,7 +175,7 @@ impl Danmaku {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DanmakuData {
   pub content: String,
   pub metadata: DanmakuMeta,
@@ -173,7 +218,7 @@ impl DanmakuData {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DanmakuMeta {
   pub mode: DanmakuMode,
   pub font_size: u64,
@@ -238,7 +283,7 @@ impl DanmakuMeta {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct MetaExtra {
   #[serde(rename = "emots")]
   #[serde_as(as = "DefaultOnNull")]
@@ -246,7 +291,7 @@ pub struct MetaExtra {
 }
 
 /// Emoticon inline in message text
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct InlineEmoticon {
   #[serde(rename = "emoticon_id")]
   pub id: u64,
@@ -260,7 +305,7 @@ pub struct InlineEmoticon {
   pub count: usize,
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, FromPrimitive, Clone)]
 #[repr(u8)]
 pub enum DanmakuMode {
   Normal = 1,
@@ -272,7 +317,7 @@ pub enum DanmakuMode {
 }
 
 #[serde_as]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Emoticon {
   #[serde(rename = "emoticon_unique")]
   pub unique: String,
@@ -287,7 +332,7 @@ pub struct Emoticon {
   pub width: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DanmakuUser {
   pub uid: u64,
   pub username: String,
@@ -323,13 +368,13 @@ impl DanmakuUser {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UserLevel {
   pub level: u32,
   pub rank: Either<String, u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UserMedal {
   pub is_active: bool,
   pub name: String,
@@ -408,7 +453,7 @@ impl UserLevel {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GuardBuy {
   pub uid: u64,
   pub username: String,
@@ -422,8 +467,44 @@ pub struct GuardBuy {
   pub end_time: u64,
 }
 
+#[serde_as]
+#[derive(Deserialize, Debug, Clone)]
+pub struct InteractWord {
+  #[serde(rename = "msg_type")]
+  pub interact_type: InteractType,
+  #[serde(rename = "roomid")]
+  pub room_id: u64,
+  #[serde(rename = "uname")]
+  pub username: String,
+  pub uid: u64,
+  #[serde(rename = "fans_medal")]
+  pub medal: MedalInfo,
+  #[serde(deserialize_with = "date_as_unix_ts")]
+  pub timestamp: Option<OffsetDateTime>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InteractType {
+  Join,         // 1
+  Subscribe,    // 2
+  Unknown(i32), // other
+}
+
+impl FromCode for InteractType {
+  fn from_code(code: i32) -> Self {
+    use InteractType::*;
+    match code {
+      1 => Join,
+      2 => Subscribe,
+      unk => Unknown(unk),
+    }
+  }
+}
+
+de_from_code_impl!(InteractType);
+
 #[repr(u8)]
-#[derive(Deserialize_repr, FromPrimitive, Debug)]
+#[derive(Deserialize_repr, FromPrimitive, Debug, Clone, Copy)]
 pub enum GuardLevel {
   None = 0,
   Governor = 1, // 总督
@@ -432,7 +513,7 @@ pub enum GuardLevel {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Living {
   #[serde(rename = "roomid")]
   pub room_id: u64,
@@ -444,12 +525,37 @@ pub struct Living {
   pub live_model: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct OnlineRankCount {
   pub count: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct Preparing {
+  #[serde(rename = "roomid")]
+  pub room_id: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoomAdminEntrance {
+  #[serde(rename = "msg")]
+  pub message: String,
+  pub uid: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoomAdminRevoke {
+  #[serde(rename = "msg")]
+  pub message: String,
+  pub uid: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoomAdmins {
+  pub uids: Vec<u64>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct RoomBlock {
   #[serde(rename = "dmscore")]
   pub score: u32,
@@ -458,7 +564,7 @@ pub struct RoomBlock {
   pub uname: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct RoomChange {
   pub title: String,
   pub area_id: u32,
@@ -467,7 +573,77 @@ pub struct RoomChange {
   pub parent_area_name: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoomRealTimeUpdate {
+  pub fans: u64,
+  pub fans_club: u64,
+  #[serde(rename = "roomid")]
+  pub room_id: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoomSilentOn {
+  pub level: u32,
+  #[serde(rename = "second")]
+  pub time: RoomSilentTime,
+  #[serde(rename = "type")]
+  pub silent_type: SilentType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RoomSilentTime {
+  Once,
+  Until(OffsetDateTime),
+}
+
+impl<'de> de::Deserialize<'de> for RoomSilentTime {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    struct De;
+    impl de::Visitor<'_> for De {
+      type Value = RoomSilentTime;
+
+      fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+      where
+        E: de::Error,
+      {
+        if v == -1 {
+          Ok(RoomSilentTime::Once)
+        } else {
+          match OffsetDateTime::from_unix_timestamp(v) {
+            Ok(v) => Ok(RoomSilentTime::Until(v)),
+            Err(_) => Err(DeError::invalid_value(Unexpected::Signed(v), &"0 or 1")),
+          }
+        }
+      }
+
+      forward_ints::de_as!(i64: u8, u16, u32, i8, i16, i32);
+      forward_ints::try_from_unsigned!(i64: u64);
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("RoomSilentTime(i64)")
+      }
+    }
+    deserializer.deserialize_i64(De)
+  }
+}
+
+#[derive(Default, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum SilentType {
+  #[serde(rename = "member")]
+  Member, // 全员
+  #[serde(rename = "medal")]
+  Medal, // 勋章
+  #[serde(rename = "level")]
+  Level, // UL 等级
+  #[default]
+  #[serde(other)]
+  Unknown,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct RoomShield {
   #[serde(rename = "type")]
   pub ty: u32,
@@ -475,21 +651,21 @@ pub struct RoomShield {
   pub keyword: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct StopLiveRoomList {
   #[serde(rename = "room_id_list")]
   pub list: Vec<u64>,
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatDelete {
   #[serde_as(as = "DefaultOnNull")]
   pub ids: Vec<u64>,
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatEntrance {
   #[serde_as(as = "NoneAsEmptyString")]
   pub icon: Option<String>,
@@ -499,7 +675,7 @@ pub struct SuperChatEntrance {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatMessage {
   pub id: u64,
   pub uid: u64,
@@ -536,7 +712,7 @@ pub struct SuperChatMessage {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatMessageJpn {
   #[serde_as(as = "DisplayFromStr")]
   pub id: u64,
@@ -566,7 +742,7 @@ pub struct SuperChatMessageJpn {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatUi {
   #[serde(deserialize_with = "de_option_rgb", default)]
   pub background_bottom_color: Option<RgbColor>,
@@ -588,7 +764,7 @@ pub struct SuperChatUi {
 }
 
 #[serde_as]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct SuperChatTime {
   #[serde(deserialize_with = "date_as_unix_ts")]
   pub start_time: Option<OffsetDateTime>,
@@ -602,14 +778,59 @@ pub struct SuperChatTime {
   pub duration: Duration,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct WatchedChange {
   pub num: u32,
   pub text_large: String,
   pub text_small: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
+pub struct UserToast {
+  pub op_type: UserToastType,
+  pub toast_msg: String,
+  pub num: u32,
+  pub unit: String,
+  pub price: u64,
+  pub guard_level: GuardLevel,
+  pub role_name: String,
+  pub uid: u64,
+  pub username: String,
+
+  pub anchor_show: bool,
+  pub user_show: bool,
+  #[serde(deserialize_with = "date_as_unix_ts")]
+  pub end_time: Option<OffsetDateTime>,
+  #[serde(deserialize_with = "de_option_rgb", default)]
+  pub color: Option<RgbColor>,
+  pub effect_id: u64,
+  pub face_effect_id: u64,
+  pub gift_id: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UserToastType {
+  Buy,
+  Renewal,
+  AutoRenewal,
+  Unknown(i32),
+}
+
+de_from_code_impl!(UserToastType);
+
+impl FromCode for UserToastType {
+  fn from_code(code: i32) -> Self {
+    use UserToastType::*;
+    match code {
+      1 => Buy,
+      2 => Renewal,
+      3 => AutoRenewal,
+      unk => Unknown(unk),
+    }
+  }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct Warning {
   #[serde(rename = "msg")]
   pub message: String,
@@ -617,8 +838,48 @@ pub struct Warning {
 
 #[cfg(test)]
 mod tests {
-  use indoc::indoc;
+  use super::*;
   use serde_json::json;
 
-  use super::*;
+  #[test]
+  fn de_room_silent_on() -> anyhow::Result<()> {
+    let command = Command::deserialize(json! {
+      {"cmd":"ROOM_SILENT_ON","data":{"level":2,"second":1676986353,"type":"level"}}
+    })?;
+    if let Command::RoomSilentOn { data } = command {
+      assert_eq!(data.silent_type, SilentType::Level);
+    } else {
+      panic!()
+    }
+
+    let command = Command::deserialize(json! {
+      {"cmd":"ROOM_SILENT_ON","data":{"level":2,"second":-1,"type":"member"}}
+    })?;
+    if let Command::RoomSilentOn { data } = command {
+      assert_eq!(data.silent_type, SilentType::Member);
+      assert_eq!(data.time, RoomSilentTime::Once);
+    } else {
+      panic!()
+    }
+
+    let command = Command::deserialize(json! {
+      {"cmd":"ROOM_SILENT_ON","data":{"level":100,"second":-1,"type":"unk123"}}
+    })?;
+    if let Command::RoomSilentOn { data } = command {
+      assert_eq!(data.silent_type, SilentType::Unknown);
+      assert_eq!(data.time, RoomSilentTime::Once);
+    } else {
+      panic!()
+    }
+
+    Ok(())
+  }
+
+  #[test]
+  fn de_room_silent_time() {
+    let time = RoomSilentTime::deserialize(json!(-1)).unwrap();
+    assert_eq!(RoomSilentTime::Once, time);
+    let time = RoomSilentTime::deserialize(json!(1679147517)).unwrap();
+    assert!(matches!(time, RoomSilentTime::Until(_)));
+  }
 }

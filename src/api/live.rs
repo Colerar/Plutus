@@ -2,7 +2,10 @@ use std::{io::Cursor, sync::Arc, time::Duration};
 
 use super::*;
 use anyhow::Context;
+use futures_core::Stream;
 use futures_util::{SinkExt, StreamExt};
+
+use log::warn;
 use reqwest::Url;
 use tokio::{
   sync::{
@@ -123,8 +126,13 @@ impl MessageConnection {
     {
       let msg = Certificate::new(mid, room_id, key, protocol).with_head(1);
       log::debug!("Send Certificate Packet: {:?}", msg);
-      let binary = msg.into_binary_frame().unwrap();
-      wss_tx.send(binary).await.unwrap();
+      let binary = msg
+        .into_binary_frame()
+        .context("Failed to serialize cert packet into binary frame")?;
+      wss_tx
+        .send(binary)
+        .await
+        .context("Failed to send cert packet")?;
     }
 
     let heartbeat_job = tokio::spawn({
@@ -171,9 +179,16 @@ impl MessageConnection {
               err => panic!("{err:#?}"),
             },
           };
+
           let ws2::Message::Binary(binary) = msg else { continue };
           let mut cursor = Cursor::new(binary);
-          let payload = Payload::from_reader(&mut cursor).unwrap();
+          let payload = match Payload::from_reader(&mut cursor) {
+            Ok(payload) => payload,
+            Err(err) => {
+              warn!("Failed to read pkt {err:#?}");
+              continue;
+            }
+          };
           match payload {
             ref payload @ HeartbeatResp { .. } | ref payload @ CertificateResp(_) => {
               log::debug!("{payload:?}");
@@ -201,10 +216,6 @@ impl MessageConnection {
     Ok(con)
   }
 
-  pub fn receiver(&mut self) -> &mut Receiver<MaybeCommand> {
-    &mut self.rx
-  }
-
   fn close(&mut self) {
     if self.close {
       return;
@@ -221,6 +232,18 @@ impl MessageConnection {
   }
 }
 
+impl Stream for MessageConnection {
+  type Item = MaybeCommand;
+
+  #[inline]
+  fn poll_next(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Self::Item>> {
+    self.get_mut().rx.poll_recv(cx)
+  }
+}
+
 impl Drop for MessageConnection {
   #[inline]
   fn drop(&mut self) {
@@ -233,10 +256,6 @@ pub struct NetworkConfig {
   /// The interval of sending heartbeat packet, the default is 30 seconds.
   pub heartbeat_interval: Duration,
   /// The size of the mpsc channel. Backpressure is controlled by this option.
-  /// When value is `None`, unbounded mpsc will be created. Otherwise,
-  /// it's the buffer size of mpsc.
-  ///
-  /// Default is `None`, i.e. unbounded channel.
   pub channel_buffer: usize,
   pub websocket_config: WebSocketConfig,
 }
