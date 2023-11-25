@@ -21,6 +21,7 @@ url_path!(
 url_path!(
   base: MAIN,
   NAV_INFO: "x/web-interface/nav",
+  SPI: "x/frontend/finger/spi"
 );
 
 url_path!(

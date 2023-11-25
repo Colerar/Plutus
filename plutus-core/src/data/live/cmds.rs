@@ -1,9 +1,6 @@
 use std::{collections::HashMap, fmt, time::Duration};
 
-use crate::{
-  data::{live::*, macros::*, share::*},
-  serde_as::*,
-};
+use crate::data::{live::*, macros::*, share::*};
 use anyhow::{bail, Context};
 use either::Either;
 use num_derive::FromPrimitive;
@@ -17,8 +14,12 @@ use serde_repr::Deserialize_repr;
 use serde_with::{
   serde_as, BoolFromInt, DefaultOnNull, DisplayFromStr, DurationSeconds, NoneAsEmptyString,
 };
-use time::serde::timestamp::option::deserialize as date_as_unix_ts;
-use time::OffsetDateTime;
+use time::{serde::timestamp::option::deserialize as date_as_unix_ts, OffsetDateTime};
+
+pub trait Cmd: DeserializeOwned + std::fmt::Debug + Sync + Send + 'static {}
+impl Cmd for serde_json::Value {}
+impl Cmd for MaybeCommand {}
+impl Cmd for Command {}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -70,6 +71,12 @@ pub enum Command {
   InteractWord {
     data: Box<InteractWord>,
   },
+  LikeInfoV3Click {
+    data: Box<LikeInfoV3Click>,
+  },
+  LikeInfoV3Update {
+    data: Box<LikeInfoV3Update>,
+  },
   #[serde(rename = "LIVE")]
   Living {
     #[serde(flatten)]
@@ -77,6 +84,10 @@ pub enum Command {
   },
   OnlineRankCount {
     data: OnlineRankCount,
+  },
+  #[serde(rename = "ONLINE_RANK_V2")]
+  OnlineRankV2 {
+    data: Box<OnlineRankV2>,
   },
   /// 下播
   Preparing {
@@ -459,7 +470,7 @@ pub struct GuardBuy {
   pub username: String,
   pub guard_level: GuardLevel,
   pub num: u32,
-  pub price: u32, // 电池
+  pub price: u32,
   pub gift_id: u32,
   #[serde_as(deserialize_as = "NoneAsEmptyString")]
   pub gift_name: Option<String>,
@@ -512,6 +523,23 @@ pub enum GuardLevel {
   Captain = 3,  // 舰长
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct LikeInfoV3Click {
+  #[serde(rename = "fans_medal")]
+  pub medal: MedalInfo,
+  pub like_icon: String,
+  pub like_text: String,
+  pub msg_type: i32,
+  pub uid: u64,
+  #[serde(rename = "uname")]
+  pub username: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct LikeInfoV3Update {
+  pub click_count: u64,
+}
+
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Living {
@@ -528,6 +556,25 @@ pub struct Living {
 #[derive(Deserialize, Debug, Clone)]
 pub struct OnlineRankCount {
   pub count: u32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct OnlineRankV2 {
+  pub online_list: Vec<RankMemberInfo>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug, Clone)]
+pub struct RankMemberInfo {
+  #[serde(rename = "face")]
+  pub avatar: Option<String>,
+  pub guard_level: GuardLevel,
+  pub rank: u16,
+  #[serde_as(as = "DisplayFromStr")]
+  pub score: u64,
+  pub uid: u64,
+  #[serde(rename = "uname")]
+  pub username: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -696,11 +743,6 @@ pub struct SuperChatMessage {
   pub ui: SuperChatUi,
   #[serde(flatten)]
   pub time: SuperChatTime,
-
-  #[serde_as(as = "BoolFromInt")]
-  pub is_ranked: bool,
-  #[serde_as(as = "BoolFromIntString")]
-  pub is_send_audit: bool,
 
   pub gift: Gift,
   pub price: u32,

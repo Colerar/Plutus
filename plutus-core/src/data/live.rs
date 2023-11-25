@@ -8,11 +8,10 @@ use std::{
 use cmds::*;
 
 use anyhow::{bail, Context};
-use byteorder::BigEndian as BE;
-use byteorder::{ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian as BE, ReadBytesExt, WriteBytesExt};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use serde_with::{serde_as, BoolFromInt, DefaultOnNull, NoneAsEmptyString};
 use tokio_tungstenite as tokio_ws2;
@@ -267,16 +266,16 @@ impl Message {
         buf
           .write(b"[object Object]")
           .context("Failed to write heartbeat body")?;
-      }
+      },
       Certificate(ref body) => {
         serde_json::to_writer(&mut buf, body).context("Failed to serialize Certificate body")?;
-      }
+      },
       _ => {
         bail!(
           "`{}` packet is not for sending, cannot be serialized",
           self.payload.to_string(),
         )
-      }
+      },
     };
     let payload_size = buf.len() as u32;
     self.head.size = payload_size + self.head.head_size as u32;
@@ -292,17 +291,17 @@ impl Message {
 
 #[repr(u8)]
 #[derive(strum_macros::Display, Debug)]
-pub enum MessagePayload {
+pub enum MessagePayload<CMD: Cmd = MaybeCommand> {
   Heartbeat,
   HeartbeatResp { popular: u32 },
   Certificate(Certificate),
   CertificateResp(CertificateResp),
-  Command(Vec<MaybeCommand>),
+  Command(Vec<CMD>),
 }
 
 #[allow(dead_code)]
-impl MessagePayload {
-  fn decompress_to_cmds<R: Read>(rdr: &mut R) -> anyhow::Result<Vec<MaybeCommand>> {
+impl<CMD: Cmd> MessagePayload<CMD> {
+  fn decompress_to_cmds<R: Read>(rdr: &mut R) -> anyhow::Result<Vec<CMD>> {
     let mut cmds = Vec::with_capacity(16);
     let mut head_buf = [0u8; MessageHead::SIZE];
     while rdr.read(&mut head_buf).context("Failed to read head")? == 16 {
@@ -311,30 +310,29 @@ impl MessagePayload {
         MessageHead::from_reader(&mut head_cursor).context("Failed to read MessageHead")?;
       let mut buf: Vec<u8> = vec![0; (head.size - head.head_size as u32) as usize];
       rdr.read_exact(&mut buf).context("Failed to read body")?;
-      let cmd: MaybeCommand =
-        serde_json::from_slice(&buf).context("Failed to read Json with Zlib")?;
+      let cmd: CMD = serde_json::from_slice(&buf).context("Failed to read Json with Zlib")?;
       cmds.push(cmd);
     }
     cmds.shrink_to_fit();
     Ok(cmds)
   }
 
-  pub fn from_reader<R: Read>(reader: &mut R) -> anyhow::Result<MessagePayload> {
+  pub fn from_reader<R: Read>(reader: &mut R) -> anyhow::Result<MessagePayload<CMD>> {
     let head = MessageHead::from_reader(reader).context("Failed to read MessageHead")?;
     use PacketProtocol::{CommandBrotli, CommandZlib, Special};
-    let payload: MessagePayload = match head.pkt_type {
+    let payload: MessagePayload<CMD> = match head.pkt_type {
       PacketType::Command => MessagePayload::Command(match head.protocol {
         PacketProtocol::Command => {
           vec![serde_json::from_reader(reader).context("Failed to deserialize Command")?]
-        }
+        },
         CommandZlib => {
           let mut rdr = flate2::read::ZlibDecoder::new(reader);
           Self::decompress_to_cmds(&mut rdr)?
-        }
+        },
         CommandBrotli => {
           let mut rdr = brotli::Decompressor::new(reader, 4096);
           Self::decompress_to_cmds(&mut rdr)?
-        }
+        },
         _ => bail!("Unexpected protocol: {:?}", head.protocol),
       }),
       PacketType::HeartbeatResp if head.protocol == Special => MessagePayload::HeartbeatResp {
@@ -355,7 +353,9 @@ impl MessagePayload {
 #[derive(Serialize)]
 pub struct Certificate {
   #[serde(rename = "uid")]
-  pub mid: u64,
+  pub mid: Option<u64>,
+  pub buvid: Option<String>,
+  pub platform: Option<String>,
   #[serde(rename = "roomid")]
   pub room_id: u64,
   pub key: String,
@@ -390,16 +390,6 @@ impl std::fmt::Debug for Certificate {
 #[allow(dead_code)]
 impl Certificate {
   #[inline]
-  pub fn new(mid: u64, room_id: u64, key: String, protocol: Protocol) -> Certificate {
-    Certificate {
-      mid,
-      room_id,
-      key,
-      protocol,
-    }
-  }
-
-  #[inline]
   pub fn with_head(self, sequence: u32) -> Message {
     Message {
       head: MessageHead::certificate(sequence),
@@ -423,7 +413,7 @@ impl CertificateResp {
 
 #[derive(thiserror::Error, Debug)]
 pub enum HeadReadError {
-  #[error("Io Error, failed to read: `{0:#?}`")]
+  #[error("Io Error, failed to read: `{0:?}`")]
   Io(#[from] std::io::Error),
   #[error("invalid protocol `{0}`")]
   InvalidProtocol(u16),

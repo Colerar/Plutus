@@ -1,13 +1,11 @@
 use std::{
-  fs::{self, File, OpenOptions},
+  fs::{create_dir_all, File, OpenOptions},
   io::{BufReader, BufWriter},
   sync::Arc,
 };
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use reqwest_cookie_store::{CookieStore, CookieStoreRwLock};
-
-use crate::path::DATA_DIR;
 
 #[derive(Clone)]
 pub struct Client {
@@ -40,7 +38,8 @@ impl Client {
     let cookie_store = CookieStore::load_json(buf)
       .map(CookieStoreRwLock::new)
       .map(Arc::new)
-      .unwrap();
+      .map_err(|err| anyhow!(err))
+      .context("Failed to load cookie store")?;
 
     let client = reqwest::ClientBuilder::new()
       .cookie_provider(Arc::clone(&cookie_store))
@@ -55,16 +54,13 @@ impl Client {
   }
 
   fn open_cookies_file() -> anyhow::Result<File> {
-    let cookie_path = DATA_DIR
-      .get()
-      .context("Failed to get DATA_DIR")?
-      .join("cookies.jsonl");
-    log::trace!("Cookie path: `{}`", cookie_path.to_string_lossy());
+    let cwd = std::env::current_dir().context("Cannot get current dir")?;
+    let cookie_path = cwd.join("cookies.jsonl");
+    log::trace!("Cookie path: {}", cookie_path.display());
+
     if let Some(parent) = cookie_path.parent() {
-      if !parent.exists() {
-        fs::create_dir_all(parent)
-          .with_context(|| format!("Failed to create directory: {}", parent.to_string_lossy()))?;
-      }
+      create_dir_all(parent)
+        .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
     OpenOptions::new()
       .create(true)
@@ -88,6 +84,20 @@ impl Client {
     cookies.clear();
   }
 
+  pub fn save_cookies(&self) {
+    match Self::open_cookies_file().map(BufWriter::new) {
+      Ok(mut buf) => {
+        let save_result = self.cookie_store.read().unwrap().save_json(&mut buf);
+        if let Err(err) = save_result {
+          log::error!("Failed to save cookies: {:#?}", err);
+        };
+      },
+      Err(err) => {
+        log::error!("Failed to open cookie storage file: {:#?}", err);
+      },
+    }
+  }
+
   /// Check login offline
   pub fn check_login_offline(&self) -> bool {
     let cookies = self.cookie_store.read().unwrap();
@@ -98,17 +108,7 @@ impl Client {
 
 impl Drop for Client {
   fn drop(&mut self) {
-    match Self::open_cookies_file().map(BufWriter::new) {
-      Ok(mut buf) => {
-        let save_result = self.cookie_store.read().unwrap().save_json(&mut buf);
-        if let Err(err) = save_result {
-          log::error!("Failed to save cookies: {:#?}", err);
-        };
-      }
-      Err(err) => {
-        log::error!("Failed to open cookie storage file: {:#?}", err);
-      }
-    }
+    self.save_cookies();
   }
 }
 

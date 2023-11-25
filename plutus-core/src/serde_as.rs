@@ -1,17 +1,14 @@
-use std::{fmt, marker::PhantomData};
+use std::fmt;
 
 use serde::{
   de::{Error as DeError, Unexpected, Visitor},
   Deserializer,
 };
-use serde_with::{
-  formats::{self, Strict},
-  DeserializeAs,
-};
+use serde_with::DeserializeAs;
 
-pub struct BoolFromIntString<S: formats::Strictness = formats::Strict>(PhantomData<S>);
+pub struct BoolFromIntString;
 
-impl<'de> DeserializeAs<'de, bool> for BoolFromIntString<Strict> {
+impl<'de> DeserializeAs<'de, bool> for BoolFromIntString {
   fn deserialize_as<D>(deserializer: D) -> Result<bool, D::Error>
   where
     D: Deserializer<'de>,

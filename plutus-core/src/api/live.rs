@@ -36,15 +36,15 @@ impl<'a> Live<'a> {
 }
 
 #[derive(Debug)]
-pub struct MessageConnection {
+pub struct MessageConnection<CMD: Cmd = MaybeCommand> {
   heartbeat_job: Option<JoinHandle<()>>,
   main_job: Option<JoinHandle<()>>,
-  rx: Receiver<MaybeCommand>,
+  rx: Receiver<CMD>,
   close: bool,
 }
 
 #[allow(dead_code)]
-impl MessageConnection {
+impl<CMD: Cmd> MessageConnection<CMD> {
   pub async fn connect_with_client(
     client: &Client,
     room_id: u64,
@@ -75,10 +75,25 @@ impl MessageConnection {
           .context("InitRoomResp $.data.room_id is None")
       }
     };
+    let buvid = {
+      let client = Client::clone(client);
+      async move {
+        client
+          .info()
+          .get_spi()
+          .await
+          .context("Failed to get spi info")?
+          .data
+          .context("InitRoomResp $.data is None")?
+          .buvid_3
+          .context("InitRoomResp $.data.b_3 is None")
+      }
+    };
 
-    let (mid, real_room_id) = tokio::join!(mid, real_room_id);
+    let (mid, real_room_id, buvid) = tokio::join!(mid, real_room_id, buvid);
     let mid = mid?;
     let real_room_id = real_room_id?;
+    let buvid = buvid?;
 
     let danmaku = client
       .live()
@@ -95,7 +110,7 @@ impl MessageConnection {
       .to_url()
       .with_context(|| format!("Failed to convert WssHost to Url: {:?}", host_data))?;
 
-    Self::connect(url, mid, real_room_id, key, Protocol::Brotli).await
+    Self::connect(url, mid, real_room_id, key, buvid, Protocol::Brotli).await
   }
 
   pub async fn connect(
@@ -103,6 +118,7 @@ impl MessageConnection {
     mid: u64,
     room_id: u64,
     key: String,
+    buvid: String,
     protocol: Protocol,
   ) -> anyhow::Result<Arc<RwLock<Self>>> {
     let config = NetworkConfig::default();
@@ -111,7 +127,7 @@ impl MessageConnection {
       .await
       .with_context(|| format!("Failed to connect WebSocket: {:?}", url))?;
 
-    let (tx, rx) = mpsc::channel::<MaybeCommand>(config.channel_buffer);
+    let (tx, rx) = mpsc::channel::<CMD>(config.channel_buffer);
 
     let con = MessageConnection {
       heartbeat_job: None,
@@ -124,7 +140,15 @@ impl MessageConnection {
     let (mut wss_tx, mut wss_rx) = ws.split();
 
     {
-      let msg = Certificate::new(mid, room_id, key, protocol).with_head(1);
+      let msg = Certificate {
+        mid: Some(mid),
+        buvid: Some(buvid),
+        platform: Some("web".to_string()),
+        room_id,
+        key,
+        protocol,
+      }
+      .with_head(1);
       log::debug!("Send Certificate Packet: {:?}", msg);
       let binary = msg
         .into_binary_frame()
@@ -138,9 +162,7 @@ impl MessageConnection {
     let heartbeat_job = tokio::spawn({
       let con = Arc::clone(&con);
       async move {
-        let mut close = false;
-        while !close {
-          close = con.read().await.close;
+        while !con.read().await.should_close() {
           let msg = Message::heartbeat(1);
           log::debug!("Send Heartbeat Packet: {:?}", msg);
           let binary = msg
@@ -149,19 +171,18 @@ impl MessageConnection {
             .unwrap();
 
           if let Err(err) = wss_tx.send(binary).await {
-            log::error!("{:#?}", err);
-            con.write().await.close();
+            log::error!("heartbeat err: {:?}", err);
             break;
           };
 
           tokio::time::sleep(config.heartbeat_interval).await;
         }
+        con.write().await.close();
       }
     });
     con.write().await.heartbeat_job = Some(heartbeat_job);
 
     let main_job = tokio::spawn({
-      let con = Arc::clone(&con);
       async move {
         while let Some(msg) = wss_rx.next().await {
           use ws2::error::ProtocolError::*;
@@ -173,26 +194,32 @@ impl MessageConnection {
             Err(err) => match err {
               ConnectionClosed | Protocol(ResetWithoutClosingHandshake) => {
                 log::debug!("Remote closed: {}", &url);
-                con.write().await.close();
+                drop(wss_rx);
                 break;
-              }
-              err => panic!("{err:#?}"),
+              },
+              err => {
+                log::error!("Unexpected ws error: {err:?}");
+                drop(wss_rx);
+                break;
+              },
             },
           };
 
-          let ws2::Message::Binary(binary) = msg else { continue };
+          let ws2::Message::Binary(binary) = msg else {
+            continue;
+          };
           let mut cursor = Cursor::new(binary);
-          let payload = match Payload::from_reader(&mut cursor) {
+          let payload = match Payload::<CMD>::from_reader(&mut cursor) {
             Ok(payload) => payload,
             Err(err) => {
-              warn!("Failed to read pkt {err:#?}");
+              warn!("Failed to read pkt {err:?}");
               continue;
-            }
+            },
           };
           match payload {
             ref payload @ HeartbeatResp { .. } | ref payload @ CertificateResp(_) => {
               log::debug!("{payload:?}");
-            }
+            },
             Command(cmds) => {
               for cmd in cmds {
                 if let Err(err) = tx
@@ -200,12 +227,11 @@ impl MessageConnection {
                   .await
                   .context("Failed to send Command to channel")
                 {
-                  log::error!("{:#?}", err);
-                  con.write().await.close();
+                  log::error!("{:?}", err);
                   break;
                 }
               }
-            }
+            },
             _ => unreachable!(),
           };
         }
@@ -216,7 +242,26 @@ impl MessageConnection {
     Ok(con)
   }
 
-  fn close(&mut self) {
+  fn should_close(&self) -> bool {
+    if let Some(ref job) = self.main_job {
+      if job.is_finished() {
+        return true;
+      }
+    } else {
+      return true;
+    }
+    if let Some(ref job) = self.heartbeat_job {
+      if job.is_finished() {
+        return true;
+      }
+    } else {
+      return true;
+    }
+
+    self.close
+  }
+
+  pub fn close(&mut self) {
     if self.close {
       return;
     }
@@ -232,8 +277,8 @@ impl MessageConnection {
   }
 }
 
-impl Stream for MessageConnection {
-  type Item = MaybeCommand;
+impl<CMD: Cmd> Stream for MessageConnection<CMD> {
+  type Item = CMD;
 
   #[inline]
   fn poll_next(
@@ -244,8 +289,7 @@ impl Stream for MessageConnection {
   }
 }
 
-impl Drop for MessageConnection {
-  #[inline]
+impl<CMD: Cmd> Drop for MessageConnection<CMD> {
   fn drop(&mut self) {
     self.close();
   }

@@ -35,7 +35,7 @@ pub struct NavInfo {
   #[serde(rename = "vipDueDate")]
   pub vip_due_date: Option<i64>,
   #[serde(rename = "vipStatus")]
-  pub vip_status: VipStatus,
+  pub vip_status: Option<VipStatus>,
   #[serde(rename = "vipType")]
   pub vip_type: Option<VipType>,
   #[serde_as(as = "Option<BoolFromInt>")]
@@ -81,6 +81,23 @@ impl FromCode for OfficialRole {
       unk => Unknown(unk),
     }
   }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SpiResp {
+  pub code: Option<i32>,
+  pub status: Option<bool>,
+  #[serde(rename = "ts")]
+  pub timestamp: Option<u64>,
+  pub data: Option<SpiData>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SpiData {
+  #[serde(rename = "b_3")]
+  pub buvid_3: Option<String>,
+  #[serde(rename = "b_4")]
+  pub buvid_4: Option<String>,
 }
 
 #[cfg(test)]
