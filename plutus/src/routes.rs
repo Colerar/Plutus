@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use diesel::{pg::Pg, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
+use tokio::net::TcpListener;
 use tower_http::{compression::CompressionLayer, timeout::TimeoutLayer};
 
 use crate::{
@@ -32,11 +33,14 @@ pub async fn server(addr: &SocketAddr) -> anyhow::Result<()> {
     .layer(TimeoutLayer::new(Duration::from_secs(5 * 60)))
     .layer(CompressionLayer::new());
   log::info!("Binding server to {addr}");
-  axum::Server::try_bind(addr)
-    .context("Failed to bind server")?
-    .serve(router.into_make_service())
-    .await
-    .context("Failed to create server")?;
+  axum::serve(
+    TcpListener::bind(addr)
+      .await
+      .context("Failed to bind addr")?,
+    router.into_make_service(),
+  )
+  .await
+  .context("Failed to create server")?;
   Ok(())
 }
 
