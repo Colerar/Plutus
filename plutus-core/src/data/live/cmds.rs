@@ -65,6 +65,9 @@ pub enum Command {
     #[serde(flatten)]
     data: Box<Danmaku>,
   },
+  EntryEffect {
+    data: Box<EntryEffect>,
+  },
   GuardBuy {
     data: Box<GuardBuy>,
   },
@@ -461,6 +464,15 @@ impl UserLevel {
     };
     Ok(UserLevel { level, rank })
   }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct EntryEffect {
+  pub id: u64,
+  pub uid: u64,
+  #[serde(rename = "face")]
+  pub avatar: String,
+  pub copy_writing_v2: String,
 }
 
 #[serde_as]

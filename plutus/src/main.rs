@@ -259,6 +259,8 @@ async fn collector(client: &Client, rooms: &[u64]) -> anyhow::Result<()> {
                 Command::SuperChatMessage { data } => Some(data.uid as i64),
                 Command::GuardBuy { data } => Some(data.uid as i64),
                 Command::InteractWord { data } => Some(data.uid as i64),
+                Command::EntryEffect { data } => Some(data.uid as i64),
+                Command::LikeInfoV3Click { data } => Some(data.uid as i64),
                 _ => None,
               };
             };
