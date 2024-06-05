@@ -9,24 +9,26 @@ use std::{
   time::Duration,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use chrono::{DateTime, Local, NaiveDateTime, Utc};
 use clap::{Parser, Subcommand};
 use dashmap::DashMap;
 use diesel_async::RunQueryDsl;
-use either::Either;
 use futures_util::StreamExt;
 use plutus_core::{
   api::live::MessageConnection,
   client::Client,
-  data::live::cmds::{Command, GuardLevel, MaybeCommand},
+  data::{
+    live::cmds::{Command, GuardLevel, MaybeCommand},
+    passport::{QrLoginData, QrLoginStatus},
+  },
 };
 use serde::Deserialize;
 use terminal_link::Link;
 use tokio::join;
 
 use crate::{
-  data::passport::QrLoginReq,
+  data::passport::QrLoginQuery,
   error::AnyhowExt,
   models::{Log, NewLog},
   resp::{Cursor, Paginated, Resp},
@@ -206,17 +208,24 @@ async fn login_if_not(client: &Client) -> anyhow::Result<()> {
   stdin().lock().read_line(&mut buf)?;
   let resp = client
     .passport()
-    .login_qr(&QrLoginReq {
-      oauth_key: &qr_data.oauth_key,
+    .login_qr(&QrLoginQuery {
+      qrcode_key: &qr_data.qrcode_key,
     })
     .await?;
+
   match resp.data {
-    Either::Left(l) => {
-      return Err(anyhow!("Failed to login: {l:?}"));
-    },
-    Either::Right(_) => {
+    Some(QrLoginData { code: QrLoginStatus::Ok, .. }) => {
       log::info!("Login successfully!");
       client.save_cookies();
+    },
+    Some(QrLoginData { code, .. }) => {
+      bail!(
+        "Failed to login, code: {raw_code} ({code:?})",
+        raw_code = code as i32
+      )
+    },
+    None => {
+      bail!("Failed to login, empty resp data")
     },
   }
   Ok(())

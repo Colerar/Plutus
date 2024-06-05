@@ -63,7 +63,7 @@ impl Client {
         .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
     OpenOptions::new()
-      .create(true)
+      .truncate(true)
       .read(true)
       .write(true)
       .open(cookie_path)

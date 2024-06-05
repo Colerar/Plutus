@@ -191,6 +191,7 @@ pub trait IntoAppResult<T> {
   where
     C: Display + Send + Sync + 'static;
 
+  #[allow(dead_code)]
   fn with_context_into_app<C, F>(self, context: F) -> AppResult<T>
   where
     C: Display + Send + Sync + 'static,

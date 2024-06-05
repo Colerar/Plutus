@@ -55,16 +55,17 @@ pub(super) use url_path;
 
 macro_rules! get_json_resp_fn {
   (
-    $( $vis:vis $fn_name:ident() [url: $api_url:expr] -> $resp_data:ty );+
+    $( $vis:vis $fn_name:ident( $($query_name:ident : $query_ty:ty)? ) [url: $api_url:expr] -> $resp_data:ty );+
     $( ; )?
   ) => {
     $(
-      $vis async fn $fn_name(&self) -> anyhow::Result<$resp_data> {
+      $vis async fn $fn_name(&self $(, $query_name : $query_ty )? ) -> anyhow::Result<$resp_data> {
         use anyhow::Context;
         self
           .0
           .client
           .get($api_url)
+          $( .query( & $query_name ) )?
           .send()
           .await
           .context(concat!(stringify!($fn_name), " failed"))?
@@ -77,6 +78,7 @@ macro_rules! get_json_resp_fn {
 }
 pub(crate) use get_json_resp_fn;
 
+#[allow(unused_macros)]
 macro_rules! post_form_json_resp_fn {
   (
     $( $vis:vis $fn_name:ident( $form_name:ident : $form_ty:ty ) [url: $api_url:expr] -> $resp_data:ty );+
@@ -89,7 +91,7 @@ macro_rules! post_form_json_resp_fn {
           .0
           .client
           .post($api_url)
-          .form($form_name)
+          .form( & $form_name)
           .send()
           .await
           .context(concat!(stringify!($fn_name), " failed"))?
@@ -100,6 +102,7 @@ macro_rules! post_form_json_resp_fn {
     )+
   };
 }
+#[allow(unused_imports)]
 pub(crate) use post_form_json_resp_fn;
 
 macro_rules! get_query_json_resp_fn {

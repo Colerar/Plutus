@@ -103,7 +103,7 @@ impl<CMD: Cmd> MessageConnection<CMD> {
     let danmaku_data = danmaku.data.context("DanmakuResp $.data is None")?;
     let host_data = danmaku_data
       .host_list
-      .get(0)
+      .first()
       .context("DanmakuResp $.data.host_list is empty")?;
     let key = danmaku_data.token.clone();
     let url = host_data
