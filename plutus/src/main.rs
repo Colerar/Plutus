@@ -214,7 +214,10 @@ async fn login_if_not(client: &Client) -> anyhow::Result<()> {
     .await?;
 
   match resp.data {
-    Some(QrLoginData { code: QrLoginStatus::Ok, .. }) => {
+    Some(QrLoginData {
+      code: QrLoginStatus::Ok,
+      ..
+    }) => {
       log::info!("Login successfully!");
       client.save_cookies();
     },
