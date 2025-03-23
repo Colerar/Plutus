@@ -26,7 +26,7 @@ use crate::{
 };
 
 #[allow(dead_code)]
-impl<'a> Live<'a> {
+impl Live<'_> {
   get_query_json_resp_fn!(
     // UID to real room id
     pub uid_to_room_id(qr_req: &UidToRoomIdReq) [url: UID_TO_ROOM_ID.clone()] -> UidToRoomIdResp;
@@ -123,7 +123,7 @@ impl<CMD: Cmd> MessageConnection<CMD> {
   ) -> anyhow::Result<Arc<RwLock<Self>>> {
     let config = NetworkConfig::default();
 
-    let (ws, _) = connect_async(url.clone())
+    let (ws, _) = connect_async(url.to_string())
       .await
       .with_context(|| format!("Failed to connect WebSocket: {:?}", url))?;
 

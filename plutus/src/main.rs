@@ -119,12 +119,14 @@ fn main() -> anyhow::Result<()> {
 pub static mut GLOBAL_STATE: Option<State> = None;
 
 pub fn global_state() -> &'static State {
+  #[allow(static_mut_refs)]
   unsafe { GLOBAL_STATE.as_ref().unwrap() }
 }
 
 pub static mut STATS_MAP: Option<Arc<ADashMap<String, u64>>> = None;
 
 pub fn stats_map() -> Arc<ADashMap<String, u64>> {
+  #[allow(static_mut_refs)]
   unsafe { STATS_MAP.clone().unwrap() }
 }
 

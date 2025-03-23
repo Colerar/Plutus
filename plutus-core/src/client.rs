@@ -35,7 +35,7 @@ impl Client {
 
   pub fn new() -> anyhow::Result<Client> {
     let buf = Self::open_cookies_file().map(BufReader::new)?;
-    let cookie_store = CookieStore::load_json(buf)
+    let cookie_store = CookieStore::load(buf, |cookie| ::serde_json::from_str(cookie))
       .map(CookieStoreRwLock::new)
       .map(Arc::new)
       .map_err(|err| anyhow!(err))
@@ -87,7 +87,11 @@ impl Client {
   pub fn save_cookies(&self) {
     match Self::open_cookies_file().map(BufWriter::new) {
       Ok(mut buf) => {
-        let save_result = self.cookie_store.read().unwrap().save_json(&mut buf);
+        let save_result = self
+          .cookie_store
+          .read()
+          .unwrap()
+          .save(&mut buf, ::serde_json::to_string);
         if let Err(err) = save_result {
           log::error!("Failed to save cookies: {:#?}", err);
         };

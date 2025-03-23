@@ -14,7 +14,7 @@ impl<'de> DeserializeAs<'de, bool> for BoolFromIntString {
     D: Deserializer<'de>,
   {
     struct U8Visitor;
-    impl<'de> Visitor<'de> for U8Visitor {
+    impl Visitor<'_> for U8Visitor {
       type Value = bool;
 
       fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

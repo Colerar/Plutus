@@ -110,7 +110,7 @@ mod tests {
     ( $( $value:expr ),+ $(,)? ) => {
       $({
         let data: Result<OfficialRole, _> = serde_json::from_value(json!($value));
-        assert!(matches!(data, Err(_)));
+        assert!(data.is_err());
       })+
     };
   }

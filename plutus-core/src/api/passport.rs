@@ -5,7 +5,7 @@ use crate::data::passport::*;
 use crate::api::*;
 
 #[allow(dead_code)]
-impl<'a> Passport<'a> {
+impl Passport<'_> {
   get_json_resp_fn!(
     pub get_login_qr() [url: LOGIN_QR_GET.clone()] -> QrCodeGetResp;
     pub login_qr(qr_req: &QrLoginQuery<'_>) [url: LOGIN_QR.clone()] -> QrLoginResp;

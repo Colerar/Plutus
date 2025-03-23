@@ -9,12 +9,13 @@ use cmds::*;
 
 use anyhow::{bail, Context};
 use byteorder::{BigEndian as BE, ReadBytesExt, WriteBytesExt};
+use bytes::BufMut;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use serde_with::{serde_as, BoolFromInt, DefaultOnNull, NoneAsEmptyString};
-use tokio_tungstenite as tokio_ws2;
+use tokio_tungstenite::{self as tokio_ws2};
 use tokio_ws2::tungstenite as ws2;
 
 use super::{macros::*, share::*, *};
@@ -214,11 +215,11 @@ impl MessageHead {
       head_size: reader.read_u16::<BE>()?,
       protocol: {
         let num = reader.read_u16::<BE>()?;
-        PacketProtocol::from_u16(num).ok_or_else(|| InvalidProtocol(num))?
+        PacketProtocol::from_u16(num).ok_or(InvalidProtocol(num))?
       },
       pkt_type: {
         let num = reader.read_u32::<BE>()?;
-        PacketType::from_u32(num).ok_or_else(|| InvalidType(num))?
+        PacketType::from_u32(num).ok_or(InvalidType(num))?
       },
       sequence: reader.read_u32::<BE>()?,
     };
@@ -244,11 +245,13 @@ pub struct Message {
 #[allow(dead_code)]
 impl Message {
   pub fn into_binary_frame(mut self) -> anyhow::Result<ws2::Message> {
-    let mut buf: Vec<u8> = Vec::with_capacity(128);
+    let mut buf = Vec::with_capacity(1024).writer();
     self
       .write_to(&mut buf)
       .context("Failed to into_binary_frame")?;
-    Ok(ws2::Message::Binary(buf))
+    Ok(ws2::Message::Binary(bytes::Bytes::from_owner(
+      buf.into_inner(),
+    )))
   }
 
   pub fn heartbeat(sequence: u32) -> Message {
