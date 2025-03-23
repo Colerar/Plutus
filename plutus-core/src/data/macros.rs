@@ -2,7 +2,7 @@ pub(super) mod forward_ints {
   macro_rules! de_as {
     ( $forward_to:ty : $($int_ty:ty),+ $(,)? ) => {
       $(
-        paste::paste! {
+        pastey::paste! {
           #[inline]
           fn [< visit_ $int_ty >] <E>(
             self,
@@ -22,7 +22,7 @@ pub(super) mod forward_ints {
   macro_rules! try_from_signed {
     ( $forward_to:ty : $($int_ty:ty),+ $(,)? ) => {
       $(
-        paste::paste! {
+        pastey::paste! {
           #[inline]
           fn [< visit_ $int_ty >] <E>(
             self,
@@ -48,7 +48,7 @@ pub(super) mod forward_ints {
   macro_rules! try_from_unsigned {
     ( $forward_to:ty : $($int_ty:ty),+ $(,)? ) => {
       $(
-        paste::paste! {
+        pastey::paste! {
           #[inline]
           fn [< visit_ $int_ty >] <E>(
             self,

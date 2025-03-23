@@ -4,7 +4,7 @@ macro_rules! api {
     $(,)?
   ) => {
     $(
-      paste::item! {
+      pastey::item! {
         pub mod [<$name:lower>];
       }
 

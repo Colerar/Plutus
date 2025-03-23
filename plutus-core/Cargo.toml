@@ -24,7 +24,7 @@ num-derive = "0.4"
 num-traits = "0.2.15"
 once_cell = "1.17.1"
 parking_lot = "0.12.1"
-paste = "1.0"
+pastey = "0.1"
 reqwest_cookie_store = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

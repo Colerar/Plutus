@@ -20,7 +20,7 @@ macro_rules! api_getter {
     $(,)?
   ) => {
     $(
-      paste::item! {
+      pastey::item! {
         pub fn [<$api_struct:lower>](&self) -> crate::api::$api_struct {
           crate::api::$api_struct::new(self)
         }
